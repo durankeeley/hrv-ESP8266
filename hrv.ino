@@ -2,6 +2,7 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <string>
+#include "secrets.h"
 
 #define D6 (12)
 #define MSGSTARTSTOP 0x7E
@@ -9,15 +10,8 @@
 
 SoftwareSerial hrvSerial;
 
-// Wifi
-const char* ssid     = "";
-const char* password = "";
-
 // MQTT Broker
-const char *mqtt_broker = "";
 const char *topic = "hrv/status";
-const char *mqtt_username = "";
-const char *mqtt_password = "";
 const int mqtt_port = 1883;
 
 // MQTT subs
@@ -45,9 +39,11 @@ byte checksumIndex;
 byte targetFanSpeed;
 bool dataStarted = false;
 bool dataReceived = false;
+float currentRoofTemperature = 0;
 
 // Define message buffer and publish string
-char message_buff[16];
+char HRVTemperature_buff[16];
+char FanSpeed_buff[16];
 int iTotalDelay = 0;
 String mqttPublishHRVTemperature;
 String mqttTargetFanSpeed;
@@ -81,29 +77,31 @@ void loop() {
     delay(1500);
   }
 
-    Serial.print("Target Fan Speed: ");
-    Serial.println(mqttTargetFanSpeed);
-    byte mqttTargetFanSpeedByte = mqttTargetFanSpeed.toInt();
-    String hexValue = decToHex(mqttTargetFanSpeedByte, 2);
+  Serial.print("Target Fan Speed: ");
+  Serial.println(mqttTargetFanSpeed);
+  byte mqttTargetFanSpeedByte = mqttTargetFanSpeed.toInt();
+  String hexValue = decToHex(mqttTargetFanSpeedByte, 2);
 
-    const char* hexStr = hexValue.c_str();
-    long int intValue = strtol(hexStr, NULL, 16);
-    targetFanSpeed = (byte) intValue;
+  const char* hexStr = hexValue.c_str();
+  long int intValue = strtol(hexStr, NULL, 16);
+  targetFanSpeed = (byte) intValue;
 
   checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
   delay(1500);
   
+  mqttPublishHRVTemperature = String(currentRoofTemperature);
+  mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
   Serial.print("CeilingTemp: ");
   Serial.println(mqttPublishHRVTemperature);
-  client.publish(MQTT_ROOF_TEMP, message_buff);
+  client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
 
   String mqttPublishFanSpeed;
   mqttPublishFanSpeed = String(targetFanSpeed);
-  mqttPublishFanSpeed.toCharArray(message_buff, mqttPublishFanSpeed.length()+1);
-
+  mqttPublishFanSpeed.toCharArray(FanSpeed_buff, mqttPublishFanSpeed.length()+1);
   Serial.print("Fan Speed: ");
   Serial.println(mqttPublishFanSpeed);
-  client.publish(MQTT_FAN_SPEED, message_buff);
+  client.publish(MQTT_FAN_SPEED, FanSpeed_buff);
+
 }
 
 void checkSwSerial(SoftwareSerial* ss) {
@@ -190,26 +188,22 @@ void checkSwSerial(SoftwareSerial* ss) {
   // Pull data out of the array, position 0 is 0x7E (start and end of message)
   for (int iPos=1; iPos <= dataIndex; iPos++)
   {
-    
     // Position 1 defines house or roof temperature
-    if (iPos==1) { tempLocation = (char) serialData[iPos]; }
+    if (iPos == 1) { tempLocation = (char) serialData[iPos]; }
 
     // Position 2 and 3 are actual temperature, convert to hex
     if (iPos == 2) { firstHexPart = decToHex(serialData[iPos], 2); }
     if (iPos == 3) { secondHexPart = decToHex(serialData[iPos], 2); }
-
   }
 
   //Concatenate first and second hex, convert back to decimal, 1/16th of dec + rounding
   //Rounding is weird - it varies between roof and house, MQTT sub rounds to nearest 0.5
-  float currentRoofTemperature = 0;
   currentRoofTemperature = hexToDec(firstHexPart + secondHexPart);
-  
   currentRoofTemperature = (currentRoofTemperature * 0.0625);
   currentRoofTemperature = (int)(currentRoofTemperature * 2 + 0.5) / 2.0f;
-  mqttPublishHRVTemperature = String(currentRoofTemperature);
-  mqttPublishHRVTemperature.toCharArray(message_buff, mqttPublishHRVTemperature.length()+1);
-
+  //DEBUG
+  Serial.print("DEBUG currentRoofTemperature: ");
+  Serial.println(currentRoofTemperature);
 }
 
 // Convert from decimal to hex
@@ -254,37 +248,37 @@ void myDelay(int ms)
 
 // Starts WIFI connection
 void startWIFI() {
-    // If we are not connected
-    if (WiFi.status() != WL_CONNECTED) {
-        int connectResult;
-        Serial.println("Initiating WiFi connection process.");
-        WiFi.mode(WIFI_STA);
-        WiFi.disconnect(); 
-        WiFi.begin(ssid, password);
+  // If we are not connected
+  if (WiFi.status() != WL_CONNECTED) {
+    int connectResult;
+    Serial.println("Initiating WiFi connection process.");
+    WiFi.mode(WIFI_STA);
+    WiFi.disconnect(); 
+    WiFi.begin(ssid, password);
 
-        // Wait for connection result
-        connectResult = WiFi.waitForConnectResult();
+    // Wait for connection result
+    connectResult = WiFi.waitForConnectResult();
 
-        // If not WiFi connected, retry every 2 seconds for 15 minutes
-        while (connectResult != WL_CONNECTED) {
-            Serial.print(".");
-            delay(2000);
-            connectResult = WiFi.waitForConnectResult();
-            // If can't get to Wifi for 15 minutes, reboot ESP
-            if (iTotalDelay > 900000)
-            {
-                Serial.println("Excessive WiFi connection attempts detected, initiating reboot.");
-                ESP.reset();
-            }
-            iTotalDelay+=2000;
-        }
-
-        Serial.println("");
-        Serial.println("WiFi connected");
-        Serial.println(WiFi.localIP());
-        // Let network have a chance to start up
-        myDelay(1500);
+    // If not WiFi connected, retry every 2 seconds for 15 minutes
+    while (connectResult != WL_CONNECTED) {
+      Serial.print(".");
+      delay(2000);
+      connectResult = WiFi.waitForConnectResult();
+      // If can't get to Wifi for 15 minutes, reboot ESP
+      if (iTotalDelay > 900000)
+      {
+        Serial.println("Excessive WiFi connection attempts detected, initiating reboot.");
+        ESP.reset();
+      }
+      iTotalDelay+=2000;
     }
+
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.println(WiFi.localIP());
+    // Let network have a chance to start up
+    myDelay(1500);
+  }
 }
 
 void startMQTT()
