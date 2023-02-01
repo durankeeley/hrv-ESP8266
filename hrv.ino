@@ -8,6 +8,8 @@
 #define MSGSTARTSTOP 0x7E
 #define localPort 57701
 
+bool enableWrite = false;
+
 SoftwareSerial hrvSerial;
 
 // MQTT Broker
@@ -38,7 +40,7 @@ byte dataIndex;
 byte checksumIndex;
 byte targetFanSpeed;
 bool dataStarted = false;
-bool dataReceived = false;
+bool dataEnded = false;
 float currentRoofTemperature = 0;
 
 // Define message buffer and publish string
@@ -67,10 +69,6 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:      
-
-  delay(1500);
-
   // check for incoming messages
   if (client.state() == MQTT_CONNECTED) {
     client.loop();
@@ -87,7 +85,7 @@ void loop() {
   targetFanSpeed = (byte) intValue;
 
   checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
-  delay(1500);
+  // delay(1500);
   
   mqttPublishHRVTemperature = String(currentRoofTemperature);
   mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
@@ -108,11 +106,15 @@ void checkSwSerial(SoftwareSerial* ss) {
   byte ch;
   byte message[] = {0x31,0x01,0x9E,targetFanSpeed,0x0E,0x80,0x70};
 
-    // Subtract from zero
+  // Subtract from zero
   int iChar = 0;
+
+  // Checks
   int iLess;
   byte bCalc;
   String sCalc;
+  byte bCheck;
+  String sCheck;
       
   // Subtract each byte in ID and data
   for (int iPos=0; iPos < sizeof(message); iPos++)
@@ -124,28 +126,50 @@ void checkSwSerial(SoftwareSerial* ss) {
   // Convert calculations
   bCalc = (byte) (iChar % 0x100);
   sCalc = decToHex(bCalc, 2);
+  bCheck = (byte) serialData[checksumIndex];
+  sCheck = decToHex(bCheck, 2);
 
-  ss->enableTx(true); // tell the arduino to switch the pin into TX mode so we can send and receive on the same wire.
-
-  {
-    int i;
-    ss->write(MSGSTARTSTOP); //send start message first
-    for(i=0; i<sizeof(message); i++){
-          ss->write(message[i]);
-          // Debug
-          //Serial.print(message[i],HEX); //send the stuff its expecting including our new fan speed
+  if (enableWrite == true) {
+    ss->enableTx(true); // tell the arduino to switch the pin into TX mode so we can send and receive on the same wire.
+    Serial.println("Starting write operation");
+    client.publish("hrv/debug", "Starting writing operation");
+    
+    {
+      int i;
+      ss->write(MSGSTARTSTOP); //send start message first
+      for(i=0; i<sizeof(message); i++){
+            ss->write(message[i]);
+            // Debug
+            //Serial.print(message[i],HEX); //send the stuff its expecting including our new fan speed
+      }
+      ss->write(bCalc);//send checksum
+      ss->write(MSGSTARTSTOP); //send stop bit
+      enableWrite = false;
+      
     }
-    ss->write(bCalc);//send checksum
-    ss->write(MSGSTARTSTOP); //send stop bit
+  }
+
+  // Wait for hrvSerial to come alive
+  if (ss->available() == 0) {
+    myDelay(2000);
+    Serial.println("No serial data detected");
+    client.publish("hrv/debug", "No serial data detected");
   }
 
   ss->enableTx(false); //this is the magic, tell the board to start listening on the same pin we just wrote to
-  delay(50);
-  
+  Serial.println(ss->available());  
   if (ss->available()) {
+    client.publish("hrv/debug", "ss->available");
     while (ss->available()) {
+      Serial.println("Starting read operation");
+      client.publish("hrv/debug", "Starting read operation");
       ch = (byte)ss->read();
       int inChar = int(ch);
+
+      char charDataIndex;
+      charDataIndex = static_cast<char>(dataIndex);
+      const char* resultDataIndex = &charDataIndex;
+      client.publish("hrv/debug", resultDataIndex);
 
       if (inChar == MSGSTARTSTOP || dataIndex > 8)
       {
@@ -154,12 +178,14 @@ void checkSwSerial(SoftwareSerial* ss) {
          {
              Serial.println("Started Block");
              Serial.println("");
+             client.publish("hrv/debug", "dataIndex == 0");
              dataStarted = true; 
          }
          else
          {
              checksumIndex = dataIndex-1;
-             dataReceived = true;
+             dataEnded = true;
+             client.publish("hrv/debug", "not recieved MSGSTARTSTOP");
              break;
          }
       }  
@@ -178,32 +204,97 @@ void checkSwSerial(SoftwareSerial* ss) {
       }
       myDelay(1);
     }
-    Serial.println();
   }
 
-  String firstHexPart;
-  String secondHexPart;
-  int iPos;
+  // if (sCalc != sCheck || dataIndex < 6) 
+  // {
+  //   // DEBUG
+  //   char charDataIndex;
+  //   Serial.print("DEBUG - dataIndex count: ");
+  //   Serial.println(dataIndex);
+  //   charDataIndex = static_cast<char>(dataIndex);
+  //   const char* resultDataIndex = &charDataIndex;
+  //   client.publish("hrv/debug", resultDataIndex);
+  //   Serial.print("DEBUG - sCalc: ");
+  //   Serial.println(sCalc);
+  //   const char* resultsCalc = sCalc.c_str();
+  //   client.publish("hrv/debug", resultsCalc);
+  //   Serial.print("DEBUG - sCheck: ");
+  //   Serial.println(sCheck);
+  //   const char* resultsCheck = sCheck.c_str();
+  //   client.publish("hrv/debug", resultsCheck);
+
+  //   // Checksum failed, reset
+  //   dataStarted = false;
+  //   dataEnded = false;
+  //   dataIndex = 0;
     
-  // Pull data out of the array, position 0 is 0x7E (start and end of message)
-  for (int iPos=1; iPos <= dataIndex; iPos++)
-  {
-    // Position 1 defines house or roof temperature
-    if (iPos == 1) { tempLocation = (char) serialData[iPos]; }
+  //   // Need to flush, maybe getting the end marker first 
+  //   hrvSerial.flush();
 
-    // Position 2 and 3 are actual temperature, convert to hex
-    if (iPos == 2) { firstHexPart = decToHex(serialData[iPos], 2); }
-    if (iPos == 3) { secondHexPart = decToHex(serialData[iPos], 2); }
+  //   // DEBUG
+  //   Serial.println("DEBUG - Checksum failed, reset");
+  //   client.publish("hrv/debug", "Checksum failed, reset");
+  // }
+  
+
+  // We got both start and end messages, process the data
+  if (dataStarted && dataEnded)
+  {
+    // DEBUG
+    Serial.println("");
+    Serial.print("DEBUG - We got both start and end messages: ");
+    Serial.print("dataStarted - ");
+    Serial.print(dataStarted);
+    Serial.print("dataEnded - ");
+    Serial.print(dataEnded);
+    Serial.println("");
+    client.publish("hrv/debug", "start and end messages recieved");
+    
+    String firstHexPart;
+    String secondHexPart;
+    int iPos;
+      
+    // Pull data out of the array, position 0 is 0x7E (start and end of message)
+    for (int iPos=1; iPos <= dataIndex; iPos++)
+    {
+      // Position 1 defines house or roof temperature
+      if (iPos == 1) { tempLocation = (char) serialData[iPos]; }
+
+      // Position 2 and 3 are actual temperature, convert to hex
+      if (iPos == 2) { firstHexPart = decToHex(serialData[iPos], 2); }
+      if (iPos == 3) { secondHexPart = decToHex(serialData[iPos], 2); }
+    }
+
+    //Concatenate first and second hex, convert back to decimal, 1/16th of dec + rounding
+    //Rounding is weird - it varies between roof and house, MQTT sub rounds to nearest 0.5
+    currentRoofTemperature = hexToDec(firstHexPart + secondHexPart);
+    currentRoofTemperature = (currentRoofTemperature * 0.0625);
+    currentRoofTemperature = (int)(currentRoofTemperature * 2 + 0.5) / 2.0f;
+    //DEBUG
+    Serial.print("DEBUG currentRoofTemperature: ");
+    Serial.println(currentRoofTemperature);
+
+    dataStarted = false;
+    dataEnded = false;
+    dataIndex = 0;
   }
 
-  //Concatenate first and second hex, convert back to decimal, 1/16th of dec + rounding
-  //Rounding is weird - it varies between roof and house, MQTT sub rounds to nearest 0.5
-  currentRoofTemperature = hexToDec(firstHexPart + secondHexPart);
-  currentRoofTemperature = (currentRoofTemperature * 0.0625);
-  currentRoofTemperature = (int)(currentRoofTemperature * 2 + 0.5) / 2.0f;
-  //DEBUG
-  Serial.print("DEBUG currentRoofTemperature: ");
-  Serial.println(currentRoofTemperature);
+  //   // DEBUG - reset vars
+  // dataStarted = false;
+  // dataEnded = false;
+  // hrvSerial.flush();
+  // dataIndex = 0;
+  // checksumIndex = 0;
+  //   for (int i = 0; i < 7; i++)
+  //   {
+  //       message[i] = 0x00;
+  //   }
+  //   for (int i = 0; i < 10; i++)
+  //   {
+  //       serialData[i] = 0x00;
+  //   }
+  // client.publish("hrv/debug", "vars reset");
 }
 
 // Convert from decimal to hex
@@ -322,4 +413,5 @@ void callback(char *topic, byte *payload, unsigned int length) {
     //Serial.print((char) payload[i]);
     mqttTargetFanSpeed += (char) payload[i];
   }
+  enableWrite = true;
 }
