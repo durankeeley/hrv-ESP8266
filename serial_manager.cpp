@@ -105,6 +105,6 @@ void checkSwSerial(SoftwareSerial* ss) {
   currentRoofTemperature = (currentRoofTemperature * 0.0625);
   currentRoofTemperature = (int)(currentRoofTemperature * 2 + 0.5) / 2.0f;
   //DEBUG
-  Serial.print("DEBUG currentRoofTemperature: ");
-  Serial.println(currentRoofTemperature);
+  //Serial.print("DEBUG currentRoofTemperature: ");
+  //Serial.println(currentRoofTemperature);
 }

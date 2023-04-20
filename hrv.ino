@@ -9,7 +9,7 @@
 #include "constants.h"
 
 #define D6 (12)
-#define MSGSTARTSTOP 0x7E
+const byte MSGSTARTSTOP = 0x7E;
 #define localPort 57701
 
 SoftwareSerial hrvSerial;
@@ -19,9 +19,9 @@ const char *topic = "hrv/status";
 const int mqtt_port = 1883;
 
 // MQTT subs
-#define MQTT_ROOF_TEMP "hrv/rooftemp"
-#define MQTT_FAN_SPEED "hrv/currentfanspeed"
-#define MQTT_TARGET_FAN_SPEED "hrv/targetfanspeed"
+const char* MQTT_ROOF_TEMP = "hrv/rooftemp";
+const char* MQTT_FAN_SPEED = "hrv/currentfanspeed";
+const char* MQTT_TARGET_FAN_SPEED = "hrv/targetfanspeed";
 
 // The MAC address of the Arduino
 // 34:94:54:61:EE:70
@@ -98,6 +98,7 @@ void loop() {
     targetFanSpeed = (byte) intValue;
 
     checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
+    delay(1000);
 
     mqttPublishHRVTemperature = String(currentRoofTemperature);
     mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);

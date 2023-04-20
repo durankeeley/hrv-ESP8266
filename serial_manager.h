@@ -4,6 +4,5 @@
 #include <SoftwareSerial.h>
 
 void checkSwSerial(SoftwareSerial* ss);
-char tempLocation;
 
 #endif
