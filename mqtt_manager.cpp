@@ -1,4 +1,5 @@
 #include "mqtt_manager.h"
+#include "constants.h"
 
 extern const char* mqtt_broker;
 extern const int mqtt_port;

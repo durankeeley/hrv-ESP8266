@@ -6,19 +6,22 @@
 #include "mqtt_manager.h"
 #include "serial_manager.h"
 #include "utils.h"
+#include "constants.h"
 
 #define D6 (12)
-
+#define MSGSTARTSTOP 0x7E
 #define localPort 57701
 
 SoftwareSerial hrvSerial;
 
-
+// MQTT Broker
+const char *topic = "hrv/status";
+const int mqtt_port = 1883;
 
 // MQTT subs
 #define MQTT_ROOF_TEMP "hrv/rooftemp"
 #define MQTT_FAN_SPEED "hrv/currentfanspeed"
-
+#define MQTT_TARGET_FAN_SPEED "hrv/targetfanspeed"
 
 // The MAC address of the Arduino
 // 34:94:54:61:EE:70
@@ -31,17 +34,23 @@ IPAddress ipadd;
 char packetBuffer[255];
 
 // Temperature from Roof or House
-
+char tempLocation;
 
 // TTL hrvSerial data array, dataIndex, dataIndex of checksum and temperature
-
+byte serialData[10];
+byte dataIndex;
+byte checksumIndex;
+byte targetFanSpeed;
+bool dataStarted = false;
+bool dataReceived = false;
 float currentRoofTemperature = 0;
 
 // Define message buffer and publish string
 char HRVTemperature_buff[16];
 char FanSpeed_buff[16];
-
+int iTotalDelay = 0;
 String mqttPublishHRVTemperature;
+String mqttTargetFanSpeed;
 
 
 // Non-blocking delay variables
