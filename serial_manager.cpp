@@ -33,22 +33,42 @@ void checkSwSerial(SoftwareSerial* ss) {
   {
     int i;
     ss->write(MSGSTARTSTOP); //send start message first
+
+    // DEBUG
+    //writemsg = "";
+    //writemsg += MSGSTARTSTOP;
+
     for(i=0; i<sizeof(message); i++){
           ss->write(message[i]);
-          // Debug
+          // DEBUG
           //Serial.print(message[i],HEX); //send the stuff its expecting including our new fan speed
+          //writemsg += (char) message[i];
     }
     ss->write(bCalc);//send checksum
+    // writemsg += bCalc;
     ss->write(MSGSTARTSTOP); //send stop bit
+    // writemsg += MSGSTARTSTOP;
+    // Serial.print(writemsg);
   }
 
   ss->enableTx(false); //this is the magic, tell the board to start listening on the same pin we just wrote to
   delay(50);
   
   if (ss->available()) {
+    // DEBUG
+    //Serial.println("Data available on serial port!");
     while (ss->available()) {
       ch = (byte)ss->read();
       int inChar = int(ch);
+
+      // Serial.println("");
+      // Serial.println("DEBUG");
+      // Serial.println("dataIndex: ");
+      // Serial.print(String(dataIndex));
+      // Serial.println("");
+      // Serial.println("inChar: ");
+      // Serial.print(String(inChar));
+      // Serial.println("");
 
       if (inChar == MSGSTARTSTOP || dataIndex > 8)
       {
@@ -107,4 +127,10 @@ void checkSwSerial(SoftwareSerial* ss) {
   //DEBUG
   //Serial.print("DEBUG currentRoofTemperature: ");
   //Serial.println(currentRoofTemperature);
+  if (dataIndex == 9) {
+    dataIndex = 0;
+    // dataStarted = false;
+    // dataReceived = false;
+    delay(500);
+  }
 }

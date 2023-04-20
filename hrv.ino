@@ -15,7 +15,7 @@ const byte MSGSTARTSTOP = 0x7E;
 SoftwareSerial hrvSerial;
 
 // MQTT Broker
-const char *topic = "hrv/status";
+const char* topic = "hrv/status";
 const int mqtt_port = 1883;
 
 // MQTT subs
@@ -44,6 +44,7 @@ byte targetFanSpeed;
 bool dataStarted = false;
 bool dataReceived = false;
 float currentRoofTemperature = 0;
+float lastRoofTemperature = 0;
 
 // Define message buffer and publish string
 char HRVTemperature_buff[16];
@@ -51,7 +52,7 @@ char FanSpeed_buff[16];
 int iTotalDelay = 0;
 String mqttPublishHRVTemperature;
 String mqttTargetFanSpeed;
-
+//String writemsg;
 
 // Non-blocking delay variables
 unsigned long previousMillis = 0;
@@ -100,11 +101,21 @@ void loop() {
     checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
     delay(1000);
 
-    mqttPublishHRVTemperature = String(currentRoofTemperature);
-    mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
-    Serial.print("CeilingTemp: ");
-    Serial.println(mqttPublishHRVTemperature);
-    client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
+//DEBUG
+    Serial.print("DEBUG CeilingTemp: ");
+    Serial.println(String(currentRoofTemperature));
+    if (currentRoofTemperature != lastRoofTemperature) {
+      if (currentRoofTemperature > 0 || currentRoofTemperature < 0) {
+        if (currentRoofTemperature < 60) {
+          lastRoofTemperature = currentRoofTemperature;
+          mqttPublishHRVTemperature = String(currentRoofTemperature);
+          mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
+          Serial.print("Ceiling Temp: ");
+          Serial.println(mqttPublishHRVTemperature);
+          client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
+        }
+      }
+    }
 
     String mqttPublishFanSpeed;
     mqttPublishFanSpeed = String(targetFanSpeed);

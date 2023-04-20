@@ -28,6 +28,7 @@ extern byte targetFanSpeed;
 extern bool dataStarted;
 extern bool dataReceived;
 extern float currentRoofTemperature;
+//extern String writemsg;
 
 // Define message buffer and publish string
 extern char HRVTemperature_buff[16];
