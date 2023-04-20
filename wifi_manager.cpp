@@ -39,18 +39,3 @@ void startWIFI() {
   }
 }
 
-// This function yields back to the watchdog to avoid random ESP8266 resets
-void myDelay(int ms)  
-{
-  int i;
-  for(i=1; i!=ms; i++) 
-  {
-    delay(1);
-    if(i%100 == 0) 
-   {
-      ESP.wdtFeed(); 
-      yield();
-    }
-  }
-  iTotalDelay+=ms;
-}

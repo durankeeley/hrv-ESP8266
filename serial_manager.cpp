@@ -1,4 +1,5 @@
 #include "serial_manager.h"
+#include "utils.h"
 
 extern byte targetFanSpeed;
 extern float currentRoofTemperature;

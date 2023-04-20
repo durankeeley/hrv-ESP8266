@@ -1,4 +1,4 @@
-#include "temperature_utils.h"
+#include "utils.h"
 
 // Convert from decimal to hex
 String decToHex(byte decValue, byte desiredStringLength) 
@@ -22,4 +22,20 @@ unsigned int hexToDec(String hexString)
     decValue = (decValue * 16) + nextInt;
   }
   return decValue;
+}
+
+// This function yields back to the watchdog to avoid random ESP8266 resets
+void myDelay(int ms)  
+{
+  int i;
+  for(i=1; i!=ms; i++) 
+  {
+    delay(1);
+    if(i%100 == 0) 
+   {
+      ESP.wdtFeed(); 
+      yield();
+    }
+  }
+  iTotalDelay+=ms;
 }
