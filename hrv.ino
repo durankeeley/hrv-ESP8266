@@ -52,7 +52,7 @@ char FanSpeed_buff[16];
 int iTotalDelay = 0;
 String mqttPublishHRVTemperature;
 String mqttTargetFanSpeed;
-//String writemsg;
+String txMessage;
 
 // Non-blocking delay variables
 // unsigned long previousMillis = 0;
@@ -61,10 +61,17 @@ String mqttTargetFanSpeed;
 //bug
 int tempCheckCounter = 0;
 
-//debug flags
+//debug "feature" flags
 bool debug_console_enable = true;
-bool debug_console_mqtt_targetFanSpeed = false;
 bool debug_console_hrvController_currentRoofTemperature = false;
+bool debug_console_mqtt_targetFanSpeed = false;
+bool debug_console_mqtt_brokerConnection = false;
+bool debug_console_mqtt_msgFanSpeedTopic = false;
+bool debug_console_serial_txMessage = false;
+bool debug_console_serial_rxDataAvailable = false;
+bool debug_console_serial_rxReadData = false;
+bool debug_console_serial_rxStartingData = false;
+bool debug_console_wifi_connection = true;
 
 void setup() {
   hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256);

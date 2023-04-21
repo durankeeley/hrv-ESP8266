@@ -15,6 +15,12 @@ extern char packetBuffer[255];
 
 // MQTT
 extern const int mqtt_port;
+extern const char* mqtt_broker;
+extern const int mqtt_port;
+extern const char* mqtt_username;
+extern const char* mqtt_password;
+extern PubSubClient client;
+extern bool debug_console_mqtt_brokerConnection;
 
 // Temperature from Roof or House
 extern char tempLocation;
@@ -28,7 +34,7 @@ extern byte targetFanSpeed;
 extern bool dataStarted;
 extern bool dataReceived;
 extern float currentRoofTemperature;
-//extern String writemsg;
+extern String txMessage;
 
 // Define message buffer and publish string
 extern char HRVTemperature_buff[16];
@@ -40,5 +46,14 @@ extern const char* topic;
 extern const char* MQTT_TARGET_FAN_SPEED;
 extern const char* MQTT_ROOF_TEMP;
 extern const char* MQTT_FAN_SPEED;
+
+// Debug Flags
+extern bool debug_console_mqtt_brokerConnection;
+extern bool debug_console_mqtt_msgFanSpeedTopic;
+extern bool debug_console_serial_txMessage;
+extern bool debug_console_serial_rxDataAvailable;
+extern bool debug_console_serial_rxReadData;
+extern bool debug_console_serial_rxStartingData;
+extern bool debug_console_wifi_connection;
 
 #endif

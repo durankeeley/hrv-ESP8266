@@ -32,52 +32,58 @@ void checkSwSerial(SoftwareSerial* ss) {
 
   {
     int i;
+    if (debug_console_serial_txMessage == true) {
+      txMessage = "";
+      txMessage += MSGSTARTSTOP;
+    }
     ss->write(MSGSTARTSTOP); //send start message first
-
-    // DEBUG
-    //writemsg = "";
-    //writemsg += MSGSTARTSTOP;
 
     for(i=0; i<sizeof(message); i++){
           ss->write(message[i]);
-          // DEBUG
-          //Serial.print(message[i],HEX); //send the stuff its expecting including our new fan speed
-          //writemsg += (char) message[i];
+          if (debug_console_serial_txMessage == true) {
+            txMessage += (char) message[i];
+          }
     }
     ss->write(bCalc);//send checksum
-    // writemsg += bCalc;
+    if (debug_console_serial_txMessage == true) {
+      txMessage += bCalc;
+    }
     ss->write(MSGSTARTSTOP); //send stop bit
-    // writemsg += MSGSTARTSTOP;
-    // Serial.print(writemsg);
+    if (debug_console_serial_txMessage == true) {
+      txMessage += MSGSTARTSTOP;
+      Serial.print(txMessage);
+    }
   }
 
   ss->enableTx(false); //this is the magic, tell the board to start listening on the same pin we just wrote to
   delay(50);
   
   if (ss->available()) {
-    // DEBUG
-    //Serial.println("Data available on serial port!");
+    if (debug_console_serial_rxDataAvailable == true) {
+      Serial.println("Data available on serial port!");
+    }
     while (ss->available()) {
       ch = (byte)ss->read();
       int inChar = int(ch);
 
-      // Serial.println("");
-      // Serial.println("DEBUG");
-      // Serial.println("dataIndex: ");
-      // Serial.print(String(dataIndex));
-      // Serial.println("");
-      // Serial.println("inChar: ");
-      // Serial.print(String(inChar));
-      // Serial.println("");
+      if (debug_console_serial_rxReadData == true) {
+        Serial.print("ASCII value: ");
+        Serial.println(inChar);
+        Serial.println("");
+        Serial.print("Character: ");
+        Serial.println((char)ch);
+      }
 
       if (inChar == MSGSTARTSTOP || dataIndex > 8)
       {
          // Start if first time we've got the message
          if (dataIndex == 0)
          {
-             Serial.println("Started Block");
-             Serial.println("");
-             dataStarted = true; 
+            
+            dataStarted = true;
+            if (debug_console_serial_rxStartingData == true) {
+              Serial.println("Started Data Block");
+            }
          }
          else
          {
@@ -92,16 +98,12 @@ void checkSwSerial(SoftwareSerial* ss) {
         // Double check we actually got something
         if (sizeof(inChar) > 0)
         {
-          // DEBUG
-          // Serial.print("DEBUG - HEX: ");
-          // Serial.println(inChar, HEX);
           serialData[dataIndex] = inChar;
           dataIndex++;
         }        
       }
       myDelay(1);
     }
-    Serial.println();
   }
 
   String firstHexPart;
@@ -124,13 +126,8 @@ void checkSwSerial(SoftwareSerial* ss) {
   currentRoofTemperature = hexToDec(firstHexPart + secondHexPart);
   currentRoofTemperature = (currentRoofTemperature * 0.0625);
   currentRoofTemperature = (int)(currentRoofTemperature * 2 + 0.5) / 2.0f;
-  //DEBUG
-  //Serial.print("DEBUG currentRoofTemperature: ");
-  //Serial.println(currentRoofTemperature);
+
   if (dataIndex == 9) {
     dataIndex = 0;
-    // dataStarted = false;
-    // dataReceived = false;
-    //delay(5000);
   }
 }
