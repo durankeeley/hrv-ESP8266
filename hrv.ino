@@ -10,7 +10,6 @@
 
 #define D6 (12)
 const byte MSGSTARTSTOP = 0x7E;
-#define localPort 57701
 
 SoftwareSerial hrvSerial;
 

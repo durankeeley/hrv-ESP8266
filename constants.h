@@ -6,12 +6,14 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-// Wifi Client
-
+// WiFi
 extern WiFiClient wifiClient;
 extern PubSubClient client;
 extern IPAddress ipadd;
 extern char packetBuffer[255];
+extern int iTotalDelay;
+extern const char* ssid;
+extern const char* password;
 
 // MQTT
 extern const int mqtt_port;
@@ -21,6 +23,10 @@ extern const char* mqtt_username;
 extern const char* mqtt_password;
 extern PubSubClient client;
 extern bool debug_console_mqtt_brokerConnection;
+extern const char* topic;
+extern const char* MQTT_TARGET_FAN_SPEED;
+extern const char* MQTT_ROOF_TEMP;
+extern const char* MQTT_FAN_SPEED;
 
 // Temperature from Roof or House
 extern char tempLocation;
@@ -35,6 +41,9 @@ extern bool dataStarted;
 extern bool dataReceived;
 extern float currentRoofTemperature;
 extern String txMessage;
+extern byte targetFanSpeed;
+extern float currentRoofTemperature;
+extern String mqttTargetFanSpeed;
 
 // Define message buffer and publish string
 extern char HRVTemperature_buff[16];
@@ -42,10 +51,6 @@ extern char FanSpeed_buff[16];
 extern int iTotalDelay;
 extern String mqttPublishHRVTemperature;
 extern String mqttTargetFanSpeed;
-extern const char* topic;
-extern const char* MQTT_TARGET_FAN_SPEED;
-extern const char* MQTT_ROOF_TEMP;
-extern const char* MQTT_FAN_SPEED;
 
 // Debug Flags
 extern bool debug_console_mqtt_brokerConnection;

@@ -2,10 +2,6 @@
 #include "utils.h"
 #include "constants.h"
 
-extern byte targetFanSpeed;
-extern float currentRoofTemperature;
-extern String mqttTargetFanSpeed;
-
 // Sends fan speed to fan controller and receives back roof temperature
 void checkSwSerial(SoftwareSerial* ss) {
   byte ch;

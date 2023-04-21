@@ -1,8 +1,5 @@
 #include "wifi_manager.h"
-
-extern int iTotalDelay;
-extern const char* ssid;
-extern const char* password;
+#include "constants.h"
 
 // Starts WIFI connection
 void startWIFI() {
