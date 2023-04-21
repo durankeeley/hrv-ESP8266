@@ -131,6 +131,6 @@ void checkSwSerial(SoftwareSerial* ss) {
     dataIndex = 0;
     // dataStarted = false;
     // dataReceived = false;
-    delay(500);
+    //delay(5000);
   }
 }

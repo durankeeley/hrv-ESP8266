@@ -55,14 +55,24 @@ String mqttTargetFanSpeed;
 //String writemsg;
 
 // Non-blocking delay variables
-unsigned long previousMillis = 0;
-const long interval = 1500;
+// unsigned long previousMillis = 0;
+// const long interval = 1500;
+
+//bug
+int tempCheckCounter = 0;
+
+//debug flags
+bool debug_console_enable = true;
+bool debug_console_mqtt_targetFanSpeed = false;
+bool debug_console_hrvController_currentRoofTemperature = false;
 
 void setup() {
   hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256);
   hrvSerial.enableIntTx(false);
   // Debug USB Serial
+  if (debug_console_enable == true) {
   Serial.begin(115200);
+  }
 
   // Initialize defaults
   dataIndex = 0;
@@ -73,12 +83,11 @@ void setup() {
 
   startWIFI();
   startMQTT();
-
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  unsigned long currentMillis = millis();
+  // unsigned long currentMillis = millis();
 
   // check for incoming messages
   if (client.state() == MQTT_CONNECTED) {
@@ -86,11 +95,47 @@ void loop() {
   }
 
   // Non-blocking delay
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
+  // if (currentMillis - previousMillis >= interval) {
+  //   previousMillis = currentMillis;
 
-    Serial.print("Target Fan Speed: ");
-    Serial.println(mqttTargetFanSpeed);
+    checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
+    delay(5000);
+
+    if (debug_console_hrvController_currentRoofTemperature = true) {
+      Serial.print("Current Roof Temperature: ");
+      Serial.println(String(currentRoofTemperature));
+    }
+    if (currentRoofTemperature != lastRoofTemperature || currentRoofTemperature == 0) {
+      tempCheckCounter++;
+      if (debug_console_hrvController_currentRoofTemperature == true) {
+        Serial.println("Roof Temperature is not the same as last time");
+        Serial.print("increased tempCheckCounter to: ");
+        Serial.println(String(tempCheckCounter));
+      }
+
+      if (currentRoofTemperature > 0 || currentRoofTemperature < 0) {
+        if (currentRoofTemperature < 60) {
+          lastRoofTemperature = currentRoofTemperature;
+          mqttPublishHRVTemperature = String(currentRoofTemperature);
+          mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
+          client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
+        }
+      }
+    } else {
+    tempCheckCounter = 0; // Reset counter if temperature has changed
+  }
+
+  if (tempCheckCounter >= 2) {
+    if (debug_console_hrvController_currentRoofTemperature == true) {
+      Serial.println("Roof temperature has reported incorrectly twice, restarting serial port for HRV controller");
+    }
+    hrvSerial.end(); // stop software serial
+    delay(1000); // wait for 1 second
+    hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256); // start software serial
+    delay(5000);
+    tempCheckCounter = 0;
+  }
+
     byte mqttTargetFanSpeedByte = mqttTargetFanSpeed.toInt();
     String hexValue = convertBase(mqttTargetFanSpeedByte, 10, 16);
 
@@ -98,34 +143,17 @@ void loop() {
     long int intValue = strtol(hexStr, NULL, 16);
     targetFanSpeed = (byte) intValue;
 
-    checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
-    delay(1000);
-
-//DEBUG
-    Serial.print("DEBUG CeilingTemp: ");
-    Serial.println(String(currentRoofTemperature));
-    if (currentRoofTemperature != lastRoofTemperature) {
-      if (currentRoofTemperature > 0 || currentRoofTemperature < 0) {
-        if (currentRoofTemperature < 60) {
-          lastRoofTemperature = currentRoofTemperature;
-          mqttPublishHRVTemperature = String(currentRoofTemperature);
-          mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
-          Serial.print("Ceiling Temp: ");
-          Serial.println(mqttPublishHRVTemperature);
-          client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
-        }
-      }
-    }
-
     String mqttPublishFanSpeed;
     mqttPublishFanSpeed = String(targetFanSpeed);
     mqttPublishFanSpeed.toCharArray(FanSpeed_buff, mqttPublishFanSpeed.length()+1);
-    Serial.print("Fan Speed: ");
-    Serial.println(mqttPublishFanSpeed);
-    client.publish(MQTT_FAN_SPEED, FanSpeed_buff);
-  }
-}
 
+    if (debug_console_mqtt_targetFanSpeed == true) {
+      Serial.print("Fan Speed: ");
+      Serial.println(mqttPublishFanSpeed);
+    }
+    client.publish(MQTT_FAN_SPEED, FanSpeed_buff);
+  // }
+}
 
 // Convert a number from one base to another
 String convertBase(int num, int fromBase, int toBase) {
