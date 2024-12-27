@@ -2,128 +2,182 @@
 #include "utils.h"
 #include "constants.h"
 
-// Sends fan speed to fan controller and receives back roof temperature
-void checkSwSerial(SoftwareSerial* ss) {
-  byte ch;
-  byte message[] = {0x31,0x01,0x9E,targetFanSpeed,0x0E,0x80,0x70};
+extern bool debug_console_serial_txMessage;
+extern bool debug_console_serial_rxDataAvailable;
+extern bool debug_console_serial_rxReadData;
+extern bool debug_console_serial_rxStartingData;
 
-    // Subtract from zero
+// Shared from .ino or a common .h file
+extern float currentRoofTemperature;
+extern byte targetFanSpeed;
+extern bool dataStarted;
+extern bool dataReceived;
+extern byte serialData[10];
+extern byte dataIndex;
+extern byte checksumIndex;
+extern const byte MSGSTARTSTOP;
+
+static void injectMockData()
+{
+  // Convert mockRoofTempValue to raw data
+  float val = mockRoofTempValue; // e.g., 32.0
+  int raw = (int)(val / 0.0625f); // 512
+  byte high = (raw >> 8) & 0xFF; // 0x02
+  byte low = raw & 0xFF;         // 0x00
+
+  // Define tempLocation (e.g., 'R' = 0x31)
+  byte tempLocationByte = 0x31;
+
+  // Compute checksum
   int iChar = 0;
-  int iLess;
-  byte bCalc;
-  String sCalc;
-      
-  // Subtract each byte in ID and data
-  for (int iPos=0; iPos < sizeof(message); iPos++)
-  {
-    iLess = message[iPos];
-    iChar = iChar - iLess;
+  iChar -= tempLocationByte;
+  iChar -= high;
+  iChar -= low;
+  byte checksum = (byte)(iChar % 0x100); // 0xCD
+
+  // Construct the mock message with checksum
+  byte mockMessage[] = {0x7E, tempLocationByte, high, low, checksum, 0x7E};
+
+  for (unsigned int i = 0; i < sizeof(mockMessage); i++) {
+    byte ch = mockMessage[i];
+
+    if (debug_console_serial_rxDataAvailable) {
+      Serial.println(F("Data available on serial port (MOCK)!"));
+    }
+    if (debug_console_serial_rxReadData) {
+      Serial.print(F("Mock Byte: 0x"));
+      Serial.println(ch, HEX);
+    }
+
+    if (ch == MSGSTARTSTOP || dataIndex > 8) {
+      if (dataIndex == 0) {
+        dataStarted = true;
+        if (debug_console_serial_rxStartingData) {
+          Serial.println(F("Started Data Block (MOCK)"));
+        }
+      }
+      else {
+        // End of frame
+        checksumIndex = dataIndex - 1;
+        dataReceived = true;
+        parseReceivedData();
+        // Reset for next frame
+        dataIndex = 0;
+        dataStarted = false;
+        dataReceived = false;
+      }
+    }
+    else {
+      if (dataStarted && (dataIndex < sizeof(serialData))) {
+        serialData[dataIndex] = ch;
+        dataIndex++;
+      }
+    }
+    yield();
+  }
+}
+
+void checkSwSerial(SoftwareSerial* ss) {
+
+  if (debug_mockRoofTemp) {
+    injectMockData();
+    return;
   }
 
-  // Convert calculations
-  bCalc = (byte) (iChar % 0x100);
-  sCalc = decToHex(bCalc, 2);
+  byte message[] = {0x31, 0x01, 0x9E, targetFanSpeed, 0x0E, 0x80, 0x70};
 
-  ss->enableTx(true); // tell the arduino to switch the pin into TX mode so we can send and receive on the same wire.
+  int iChar = 0;
+  for (unsigned int iPos = 0; iPos < sizeof(message); iPos++) {
+    iChar -= message[iPos];
+  }
+  byte bCalc = (byte)(iChar % 0x100);
 
+  // Send the packet
+  ss->enableTx(true);
   {
-    int i;
-    if (debug_console_serial_txMessage == true) {
-      txMessage = "";
-      txMessage += MSGSTARTSTOP;
+    if (debug_console_serial_txMessage) {
+      Serial.print(F("TX: "));
+      Serial.write(MSGSTARTSTOP);
     }
-    ss->write(MSGSTARTSTOP); //send start message first
-
-    for(i=0; i<sizeof(message); i++){
-          ss->write(message[i]);
-          if (debug_console_serial_txMessage == true) {
-            txMessage += (char) message[i];
-          }
+    ss->write(MSGSTARTSTOP);
+    for (unsigned int i = 0; i < sizeof(message); i++) {
+      ss->write(message[i]);
+      if (debug_console_serial_txMessage) {
+        Serial.write(message[i]);
+      }
     }
-    ss->write(bCalc);//send checksum
-    if (debug_console_serial_txMessage == true) {
-      txMessage += bCalc;
+    ss->write(bCalc);
+    if (debug_console_serial_txMessage) {
+      Serial.write(bCalc);
     }
-    ss->write(MSGSTARTSTOP); //send stop bit
-    if (debug_console_serial_txMessage == true) {
-      txMessage += MSGSTARTSTOP;
-      Serial.print(txMessage);
+    ss->write(MSGSTARTSTOP);
+    if (debug_console_serial_txMessage) {
+      Serial.write(MSGSTARTSTOP);
+      Serial.println(); // newline
     }
   }
-
-  ss->enableTx(false); //this is the magic, tell the board to start listening on the same pin we just wrote to
+  ss->enableTx(false);
   delay(50);
-  
-  if (ss->available()) {
-    if (debug_console_serial_rxDataAvailable == true) {
-      Serial.println("Data available on serial port!");
+
+  // 2) Read response (non-blocking partial read)
+  //    Typically you’d do this in small chunks, but here we read what’s available now:
+  while (ss->available()) {
+    byte ch = (byte)ss->read();
+    if (debug_console_serial_rxDataAvailable) {
+      Serial.println(F("Data available on serial port!"));
     }
-    while (ss->available()) {
-      ch = (byte)ss->read();
-      int inChar = int(ch);
 
-      if (debug_console_serial_rxReadData == true) {
-        Serial.print("ASCII value: ");
-        Serial.println(inChar);
-        Serial.println("");
-        Serial.print("Character: ");
-        Serial.println((char)ch);
-      }
-
-      if (inChar == MSGSTARTSTOP || dataIndex > 8)
-      {
-         // Start if first time we've got the message
-         if (dataIndex == 0)
-         {
-            
-            dataStarted = true;
-            if (debug_console_serial_rxStartingData == true) {
-              Serial.println("Started Data Block");
-            }
-         }
-         else
-         {
-             checksumIndex = dataIndex-1;
-             dataReceived = true;
-             break;
-         }
-      }  
-      
-      if (dataStarted == true)
-      {
-        // Double check we actually got something
-        if (sizeof(inChar) > 0)
-        {
-          serialData[dataIndex] = inChar;
-          dataIndex++;
-        }        
-      }
-      myDelay(1);
+    if (debug_console_serial_rxReadData) {
+      Serial.print(F("Byte: "));
+      Serial.println(ch, HEX);
     }
+
+    // Detect start of frame or end
+    if (ch == MSGSTARTSTOP || dataIndex > 8) {
+      if (dataIndex == 0) {
+        // We are starting to read a data frame
+        dataStarted = true;
+        if (debug_console_serial_rxStartingData) {
+          Serial.println(F("Started Data Block"));
+        }
+      } else {
+        // We reached the end
+        checksumIndex = dataIndex - 1;
+        dataReceived  = true;
+        parseReceivedData();
+        // Reset for next frame
+        dataIndex = 0;
+        dataStarted = false;
+        dataReceived = false;
+      }
+    } else {
+      // If we are in the frame, collect data
+      if (dataStarted && (dataIndex < sizeof(serialData))) {
+        serialData[dataIndex] = ch;
+        dataIndex++;
+      }
+    }
+    yield();
+}
+}
+
+void parseReceivedData() {
+  if (dataIndex < 4) {
+    return;
   }
 
-  String firstHexPart;
-  String secondHexPart;
-  int iPos;
-    
-  // Pull data out of the array, position 0 is 0x7E (start and end of message)
-  for (int iPos=1; iPos <= dataIndex; iPos++)
-  {
-    // Position 1 defines house or roof temperature
-    if (iPos == 1) { tempLocation = (char) serialData[iPos]; }
+  // Positions:
+  //   [0] => tempLocation
+  //   [1] => first part of temp
+  //   [2] => second part of temp
+  //   [3] => checksum
+  tempLocation = (char)serialData[0];
+  String firstHexPart = decToHex(serialData[1], 2);
+  String secondHexPart = decToHex(serialData[2], 2);
 
-    // Position 2 and 3 are actual temperature, convert to hex
-    if (iPos == 2) { firstHexPart = decToHex(serialData[iPos], 2); }
-    if (iPos == 3) { secondHexPart = decToHex(serialData[iPos], 2); }
-  }
+  float temperature = hexToDec(firstHexPart + secondHexPart);
+  temperature *= 0.0625f;
+  temperature = (int)(temperature * 2 + 0.5) / 2.0f;
 
-  //Concatenate first and second hex, convert back to decimal, 1/16th of dec + rounding
-  //Rounding is weird - it varies between roof and house, MQTT sub rounds to nearest 0.5
-  currentRoofTemperature = hexToDec(firstHexPart + secondHexPart);
-  currentRoofTemperature = (currentRoofTemperature * 0.0625);
-  currentRoofTemperature = (int)(currentRoofTemperature * 2 + 0.5) / 2.0f;
-
-  if (dataIndex == 9) {
-    dataIndex = 0;
-  }
+  currentRoofTemperature = temperature;
 }

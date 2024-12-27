@@ -1,5 +1,6 @@
 #include "wifi_manager.h"
 #include "constants.h"
+#include "secrets.h"
 
 // Starts WIFI connection
 void startWIFI() {
