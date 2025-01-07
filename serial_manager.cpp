@@ -2,12 +2,11 @@
 #include "utils.h"
 #include "constants.h"
 
+// variable declarations
 extern bool debug_console_serial_txMessage;
 extern bool debug_console_serial_rxDataAvailable;
 extern bool debug_console_serial_rxReadData;
 extern bool debug_console_serial_rxStartingData;
-
-// Shared from .ino or a common .h file
 extern float currentRoofTemperature;
 extern byte targetFanSpeed;
 extern bool dataStarted;
@@ -113,14 +112,12 @@ void checkSwSerial(SoftwareSerial* ss) {
     ss->write(MSGSTARTSTOP);
     if (debug_console_serial_txMessage) {
       Serial.write(MSGSTARTSTOP);
-      Serial.println(); // newline
+      Serial.println();
     }
   }
   ss->enableTx(false);
   delay(50);
 
-  // 2) Read response (non-blocking partial read)
-  //    Typically you’d do this in small chunks, but here we read what’s available now:
   while (ss->available()) {
     byte ch = (byte)ss->read();
     if (debug_console_serial_rxDataAvailable) {
