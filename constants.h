@@ -1,4 +1,3 @@
-// constants.h
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
@@ -6,53 +5,26 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-// WiFi
-extern WiFiClient wifiClient;
-extern PubSubClient client;
-extern IPAddress ipadd;
-extern char packetBuffer[255];
-extern int iTotalDelay;
-extern const char* ssid;
-extern const char* password;
 
-// MQTT
-extern const int mqtt_port;
-extern const char* mqtt_broker;
-extern const int mqtt_port;
-extern const char* mqtt_username;
-extern const char* mqtt_password;
-extern PubSubClient client;
-extern bool debug_console_mqtt_brokerConnection;
-extern const char* topic;
-extern const char* MQTT_TARGET_FAN_SPEED;
-extern const char* MQTT_ROOF_TEMP;
-extern const char* MQTT_FAN_SPEED;
+// External variable declarations (no definitions)
+// WiFi / MQTT objects
+extern WiFiClient      wifiClient;
+extern PubSubClient    client;
+extern IPAddress       ipadd;
+extern char            packetBuffer[255];
+extern int             iTotalDelay;
 
-// Temperature from Roof or House
-extern char tempLocation;
+// Basic MQTT info
+extern int             mqtt_port;
+extern const char*     topic;
+extern const char*     MQTT_TARGET_FAN_SPEED;
+extern const char*     MQTT_ROOF_TEMP;
+extern const char*     MQTT_FAN_SPEED;
 
-// TTL hrvSerial data array, dataIndex, dataIndex of checksum and temperature
-extern const byte MSGSTARTSTOP;
-extern byte serialData[10];
-extern byte dataIndex;
-extern byte checksumIndex;
-extern byte targetFanSpeed;
-extern bool dataStarted;
-extern bool dataReceived;
-extern float currentRoofTemperature;
-extern String txMessage;
-extern byte targetFanSpeed;
-extern float currentRoofTemperature;
-extern String mqttTargetFanSpeed;
-
-// Define message buffer and publish string
-extern char HRVTemperature_buff[16];
-extern char FanSpeed_buff[16];
-extern int iTotalDelay;
-extern String mqttPublishHRVTemperature;
-extern String mqttTargetFanSpeed;
-
-// Debug Flags
+// Debug flags
+extern bool debug_console_enable;
+extern bool debug_console_hrvController_currentRoofTemperature;
+extern bool debug_console_mqtt_targetFanSpeed;
 extern bool debug_console_mqtt_brokerConnection;
 extern bool debug_console_mqtt_msgFanSpeedTopic;
 extern bool debug_console_serial_txMessage;
@@ -61,4 +33,31 @@ extern bool debug_console_serial_rxReadData;
 extern bool debug_console_serial_rxStartingData;
 extern bool debug_console_wifi_connection;
 
+// Serial / temperature data
+extern byte  serialData[10];
+extern byte  dataIndex;
+extern byte  checksumIndex;
+extern bool  dataStarted;
+extern bool  dataReceived;
+extern float currentRoofTemperature;
+extern float lastRoofTemperatures[3];
+extern byte  targetFanSpeed;
+extern byte  lastTargetFanSpeed;
+extern char  tempLocation;
+
+// Buffers
+extern char  HRVTemperature_buff[16];
+extern char  FanSpeed_buff[16];
+
+// Strings
+extern String txMessage;
+extern String mqttTargetFanSpeed;
+extern String mqttPublishHRVTemperature;
+
+// Mock
+extern bool debug_mockRoofTemp;
+extern float mockRoofTempValue;
+
+// Start and stop marker
+extern const byte MSGSTARTSTOP;
 #endif

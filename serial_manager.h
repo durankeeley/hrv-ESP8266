@@ -4,5 +4,6 @@
 #include <SoftwareSerial.h>
 
 void checkSwSerial(SoftwareSerial* ss);
+void parseReceivedData();
 
 #endif

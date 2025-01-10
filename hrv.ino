@@ -1,6 +1,10 @@
+// Credit to: Spencer (data structure) http://www.hexperiments.com/?page_id=47
+// Credit to: chimera (Original Logic) - https://www.geekzone.co.nz/forums.asp?forumid=141&topicid=195424
+// Credit to: millst (TX/RX on the same pin) - https://www.geekzone.co.nz/forums.asp?forumid=141&topicid=195424&page_no=2#2982537
+
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include <string>
+#include <SoftwareSerial.h>
 #include "secrets.h"
 #include "wifi_manager.h"
 #include "mqtt_manager.h"
@@ -8,161 +12,218 @@
 #include "utils.h"
 #include "constants.h"
 
+#include "secrets.h"
+
+// Include the external declarations
+#include "constants.h"
+
+// custom modules
+#include "wifi_manager.h"    // startWIFI()
+#include "mqtt_manager.h"    // startMQTT()
+#include "serial_manager.h"  // checkSwSerial()
+#include "utils.h"           // decToHex()
+
+// Pin definitions
 #define D6 (12)
 const byte MSGSTARTSTOP = 0x7E;
 
+// WiFi / MQTT
+WiFiClient   wifiClient;
+PubSubClient client(wifiClient);
+IPAddress    ipadd;
+char         packetBuffer[255];
+int          iTotalDelay = 0;
+
+// MQTT settings
+int          mqtt_port             = 1883;
+const char*  topic                 = "hrv/status";
+const char*  MQTT_TARGET_FAN_SPEED = "hrv/targetfanspeed";
+const char*  MQTT_ROOF_TEMP        = "hrv/rooftemp";
+const char*  MQTT_FAN_SPEED        = "hrv/currentfanspeed";
+
+// Debug flags
+bool debug_console_enable                            = true;
+bool debug_console_hrvController_currentRoofTemperature = true;
+bool debug_console_mqtt_targetFanSpeed               = true;
+bool debug_console_mqtt_brokerConnection             = false;
+bool debug_console_mqtt_msgFanSpeedTopic             = false;
+bool debug_console_serial_txMessage                  = false;
+bool debug_console_serial_rxDataAvailable            = false;
+bool debug_console_serial_rxReadData                 = false;
+bool debug_console_serial_rxStartingData             = false;
+bool debug_console_wifi_connection                   = false;
+// Mock Debug
+bool debug_mockRoofTemp = false;
+float mockRoofTempValue  = 32.0;
+
+// serial and temperature data
+byte  serialData[10];
+byte  dataIndex        = 0;
+byte  checksumIndex    = 0;
+bool  dataStarted      = false;
+bool  dataReceived     = false;
+float currentRoofTemperature = 0.0;
+float lastRoofTemperatures[3] = {0.0, 0.0, 0.0};
+byte  targetFanSpeed   = 0x00;
+byte  lastTargetFanSpeed = 0;
+char  tempLocation     = 'R';
+char  HRVTemperature_buff[16];
+char  FanSpeed_buff[16];
+String txMessage;
+String mqttTargetFanSpeed;
+String mqttPublishHRVTemperature;
+
+// timing variables and constants:
+unsigned long previousReadMillis = 0;
+unsigned long previousMQTTMillis = 0;
+const unsigned long SERIAL_READ_INTERVAL = 5000;      // 5 seconds
+const unsigned long MQTT_PUBLISH_INTERVAL = 3000;     // 3 seconds
+
+// First Boot Variables
+bool firstBoot = true;
+bool firstValidReading = false;
+int validReadingsCount = 0;
+
 SoftwareSerial hrvSerial;
 
-// MQTT Broker
-const char* topic = "hrv/status";
-const int mqtt_port = 1883;
-
-// MQTT subs
-const char* MQTT_ROOF_TEMP = "hrv/rooftemp";
-const char* MQTT_FAN_SPEED = "hrv/currentfanspeed";
-const char* MQTT_TARGET_FAN_SPEED = "hrv/targetfanspeed";
-
-// The MAC address of the Arduino
-// 34:94:54:61:EE:70
-byte mac[] = { 0x34, 0x94, 0x54, 0x61, 0xEE, 0x70 };
-
-// Wifi Client
-WiFiClient wifiClient;
-PubSubClient client(wifiClient);
-IPAddress ipadd;
-char packetBuffer[255];
-
-// Temperature from Roof or House
-char tempLocation;
-
-// TTL hrvSerial data array, dataIndex, dataIndex of checksum and temperature
-byte serialData[10];
-byte dataIndex;
-byte checksumIndex;
-byte targetFanSpeed;
-bool dataStarted = false;
-bool dataReceived = false;
-float currentRoofTemperature = 0;
-float lastRoofTemperature = 0;
-
-// Define message buffer and publish string
-char HRVTemperature_buff[16];
-char FanSpeed_buff[16];
-int iTotalDelay = 0;
-String mqttPublishHRVTemperature;
-String mqttTargetFanSpeed;
-String txMessage;
-
-// Non-blocking delay variables
-// unsigned long previousMillis = 0;
-// const long interval = 1500;
-
-//bug
-int tempCheckCounter = 0;
-
-//debug "feature" flags
-bool debug_console_enable = true;
-bool debug_console_hrvController_currentRoofTemperature = false;
-bool debug_console_mqtt_targetFanSpeed = false;
-bool debug_console_mqtt_brokerConnection = false;
-bool debug_console_mqtt_msgFanSpeedTopic = false;
-bool debug_console_serial_txMessage = false;
-bool debug_console_serial_rxDataAvailable = false;
-bool debug_console_serial_rxReadData = false;
-bool debug_console_serial_rxStartingData = false;
-bool debug_console_wifi_connection = true;
-
 void setup() {
-  hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256);
-  hrvSerial.enableIntTx(false);
-  // Debug USB Serial
-  if (debug_console_enable == true) {
-  Serial.begin(115200);
+  if (debug_console_enable) {
+    Serial.begin(115200);
+    Serial.println(F("Booting..."));
   }
 
-  // Initialize defaults
-  dataIndex = 0;
-  checksumIndex = 0;
-  iTotalDelay = 0;
+  // Note: RX/TX on the same pin, so setting half-duplex, buffer size 256
+  hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256);
+  hrvSerial.enableIntTx(false); // disable tx interrupt
+
   targetFanSpeed = 0x00;
-  mqttTargetFanSpeed = 0;
+  mqttTargetFanSpeed = "";
 
   startWIFI();
   startMQTT();
+
+  client.publish(topic, "on");
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  // unsigned long currentMillis = millis();
-
-  // check for incoming messages
-  if (client.state() == MQTT_CONNECTED) {
+  if (client.connected()) {
     client.loop();
+  } else {
+    reconnectMQTTIfNeeded();
   }
 
-  // Non-blocking delay
-  // if (currentMillis - previousMillis >= interval) {
-  //   previousMillis = currentMillis;
+  unsigned long currentMillis = millis();
 
-    checkSwSerial(&hrvSerial); //send fan speed to fan controller and receive back roof temperature
-    delay(5000);
+  if (currentMillis - previousReadMillis >= SERIAL_READ_INTERVAL) {
+    previousReadMillis = currentMillis;
 
-    if (debug_console_hrvController_currentRoofTemperature = true) {
-      Serial.print("Current Roof Temperature: ");
-      Serial.println(String(currentRoofTemperature));
+    // Write and read from HRV
+    targetFanSpeed = 0;
+    checkSwSerial(&hrvSerial);
+
+    if (debug_console_hrvController_currentRoofTemperature) {
+      Serial.print(F("Current Roof Temperature: "));
+      Serial.println(currentRoofTemperature);
     }
-    if (currentRoofTemperature != lastRoofTemperature || currentRoofTemperature == 0) {
-      tempCheckCounter++;
-      if (debug_console_hrvController_currentRoofTemperature == true) {
-        Serial.println("Roof Temperature is not the same as last time");
-        Serial.print("increased tempCheckCounter to: ");
-        Serial.println(String(tempCheckCounter));
-      }
 
-      if (currentRoofTemperature > 0 || currentRoofTemperature < 0) {
-        if (currentRoofTemperature < 60) {
-          lastRoofTemperature = currentRoofTemperature;
-          mqttPublishHRVTemperature = String(currentRoofTemperature);
-          mqttPublishHRVTemperature.toCharArray(HRVTemperature_buff, mqttPublishHRVTemperature.length()+1);
-          client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
+    // Check if the reading is valid (non-zero)
+    if (currentRoofTemperature != 0.0f) { 
+      // Store the temperature in the history
+      lastRoofTemperatures[2] = lastRoofTemperatures[1];
+      lastRoofTemperatures[1] = lastRoofTemperatures[0];
+      lastRoofTemperatures[0] = currentRoofTemperature;
+
+      if (firstBoot && validReadingsCount < 3) {
+        validReadingsCount++;
+        Serial.print(F("Valid Readings Count: "));
+        Serial.println(validReadingsCount);
+        if (validReadingsCount >= 3) {
+          firstValidReading = true;
+          firstBoot = false;
+          Serial.println(F("Initialized with 3 valid temperature readings."));
         }
       }
-    } else {
-    tempCheckCounter = 0; // Reset counter if temperature has changed
-  }
-
-  if (tempCheckCounter >= 2) {
-    if (debug_console_hrvController_currentRoofTemperature == true) {
-      Serial.println("Roof temperature has reported incorrectly twice, restarting serial port for HRV controller");
     }
-    hrvSerial.end(); // stop software serial
-    delay(1000); // wait for 1 second
-    hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256); // start software serial
-    delay(5000);
-    tempCheckCounter = 0;
+
+    // out-of-range check if at least 3 valid readings to compare
+    if (firstValidReading) {
+      bool withinRange = true;
+      for (int i = 0; i < 2; i++) {
+        if (fabs(lastRoofTemperatures[i] - lastRoofTemperatures[i + 1]) > 2.0f) {
+          withinRange = false;
+          break;
+        }
+      }
+
+      if (!withinRange) {
+        if (debug_console_hrvController_currentRoofTemperature) {
+          Serial.println(F("Temperature jump beyond 2 degrees, restarting device..."));
+        }
+        lastTargetFanSpeed = targetFanSpeed;
+        String lastFanSpeedStr = String(lastTargetFanSpeed);
+        client.publish(MQTT_TARGET_FAN_SPEED, lastFanSpeedStr.c_str(), true); // retain=true
+
+        // clear softwareserial
+        hrvSerial.read();
+        hrvSerial.end();
+
+        // reset variables
+        currentRoofTemperature = 0.0f;
+        lastRoofTemperatures[0] = 0.0f;
+        lastRoofTemperatures[1] = 0.0f;
+        lastRoofTemperatures[2] = 0.0f;
+        firstBoot = true;
+        firstValidReading = false;
+        validReadingsCount = 0;
+
+        // restart the softwareserial
+        hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256);
+        hrvSerial.enableIntTx(false); 
+
+        client.subscribe(MQTT_TARGET_FAN_SPEED);
+        targetFanSpeed = lastTargetFanSpeed;
+
+      } 
+      else {
+        String mqttPublishHRVTemperatureStr = String(currentRoofTemperature);
+        mqttPublishHRVTemperatureStr.toCharArray(HRVTemperature_buff, sizeof(HRVTemperature_buff));
+        client.publish(MQTT_ROOF_TEMP, HRVTemperature_buff);
+      }
+    }
   }
 
-    byte mqttTargetFanSpeedByte = mqttTargetFanSpeed.toInt();
-    String hexValue = convertBase(mqttTargetFanSpeedByte, 10, 16);
+  if (currentMillis - previousMQTTMillis >= MQTT_PUBLISH_INTERVAL) {
+    previousMQTTMillis = currentMillis;
 
-    const char* hexStr = hexValue.c_str();
-    long int intValue = strtol(hexStr, NULL, 16);
-    targetFanSpeed = (byte) intValue;
+    targetFanSpeed = mqttTargetFanSpeed.toInt();
 
-    String mqttPublishFanSpeed;
-    mqttPublishFanSpeed = String(targetFanSpeed);
-    mqttPublishFanSpeed.toCharArray(FanSpeed_buff, mqttPublishFanSpeed.length()+1);
-
-    if (debug_console_mqtt_targetFanSpeed == true) {
-      Serial.print("Fan Speed: ");
+    // Publish current fan speed to MQTT
+    String mqttPublishFanSpeed = String(targetFanSpeed);
+    mqttPublishFanSpeed.toCharArray(FanSpeed_buff, sizeof(FanSpeed_buff));
+    if (debug_console_mqtt_targetFanSpeed) {
+      Serial.print(F("Fan Speed: "));
       Serial.println(mqttPublishFanSpeed);
     }
     client.publish(MQTT_FAN_SPEED, FanSpeed_buff);
-  // }
+  }
 }
 
-// Convert a number from one base to another
-String convertBase(int num, int fromBase, int toBase) {
-String result = String(num, toBase);
-return result;
+void reconnectMQTTIfNeeded() {
+  if (!client.connected()) {
+    while (!client.connected()) {
+      if (client.connect("hrv-client-reconnect", mqtt_username, mqtt_password)) {
+        if (debug_console_mqtt_brokerConnection) {
+          Serial.println(F("Reconnected to MQTT!"));
+        }
+        client.subscribe(MQTT_TARGET_FAN_SPEED);
+      } else {
+        if (debug_console_mqtt_brokerConnection) {
+          Serial.print(F("MQTT connect failed, rc="));
+          Serial.println(client.state());
+          Serial.println(F(" Trying again in 2 seconds..."));
+        }
+        delay(2000);
+      }
+    }
+  }
 }
