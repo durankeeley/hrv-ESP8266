@@ -1,6 +1,7 @@
 #include "serial_manager.h"
 #include "utils.h"
 #include "constants.h"
+#include "mock_data.h"
 
 // variable declarations
 extern bool debug_console_serial_txMessage;
@@ -15,66 +16,7 @@ extern byte serialData[10];
 extern byte dataIndex;
 extern byte checksumIndex;
 extern const byte MSGSTARTSTOP;
-
-static void injectMockData()
-{
-  // Convert mockRoofTempValue to raw data
-  float val = mockRoofTempValue; // e.g., 32.0
-  int raw = (int)(val / 0.0625f); // 512
-  byte high = (raw >> 8) & 0xFF; // 0x02
-  byte low = raw & 0xFF;         // 0x00
-
-  // Define tempLocation (e.g., 'R' = 0x31)
-  byte tempLocationByte = 0x31;
-
-  // Compute checksum
-  int iChar = 0;
-  iChar -= tempLocationByte;
-  iChar -= high;
-  iChar -= low;
-  byte checksum = (byte)(iChar % 0x100); // 0xCD
-
-  // Construct the mock message with checksum
-  byte mockMessage[] = {0x7E, tempLocationByte, high, low, checksum, 0x7E};
-
-  for (unsigned int i = 0; i < sizeof(mockMessage); i++) {
-    byte ch = mockMessage[i];
-
-    if (debug_console_serial_rxDataAvailable) {
-      Serial.println(F("Data available on serial port (MOCK)!"));
-    }
-    if (debug_console_serial_rxReadData) {
-      Serial.print(F("Mock Byte: 0x"));
-      Serial.println(ch, HEX);
-    }
-
-    if (ch == MSGSTARTSTOP || dataIndex > 8) {
-      if (dataIndex == 0) {
-        dataStarted = true;
-        if (debug_console_serial_rxStartingData) {
-          Serial.println(F("Started Data Block (MOCK)"));
-        }
-      }
-      else {
-        // End of frame
-        checksumIndex = dataIndex - 1;
-        dataReceived = true;
-        parseReceivedData();
-        // Reset for next frame
-        dataIndex = 0;
-        dataStarted = false;
-        dataReceived = false;
-      }
-    }
-    else {
-      if (dataStarted && (dataIndex < sizeof(serialData))) {
-        serialData[dataIndex] = ch;
-        dataIndex++;
-      }
-    }
-    yield();
-  }
-}
+byte calculateChecksum(byte* data, size_t length);
 
 void checkSwSerial(SoftwareSerial* ss) {
 
@@ -83,41 +25,38 @@ void checkSwSerial(SoftwareSerial* ss) {
     return;
   }
 
-  byte message[] = {0x31, 0x01, 0x9E, targetFanSpeed, 0x0E, 0x80, 0x70};
+  // Send the packet to the HRV Roof 
+  byte messageData[] = {0x31, 0x01, 0x9E, targetFanSpeed, 0x0E, 0x80, 0x70};
 
-  int iChar = 0;
-  for (unsigned int iPos = 0; iPos < sizeof(message); iPos++) {
-    iChar -= message[iPos];
-  }
-  byte bCalc = (byte)(iChar % 0x100);
+  // Calculate the checksum
+  byte checksum = calculateChecksum(messageData, sizeof(messageData));
 
-  // Send the packet
+  // Positions:
+  //   [0] => MSGSTARTSTOP (0x7E) - Start of frame
+  //   [1] => ID: 0x31 = Control Panel
+  //   [2] => Control Panel Temp: first part
+  //   [3] => Control Panel Temp: second part
+  //   [4] => Target Fan Speed
+  //   [5] => Control Panel Set Temp (degrees C)
+  //   [6] => Unknown: Control Panel Mode first part ?
+  //   [7] => Unknown: Control Panel Fan Mode second part ?
+  //   [8] => Checksum
+  //   [9] => MSGSTARTSTOP (0x7E) - End of frame
+
+  // Construct the full message
+  byte message[] = {MSGSTARTSTOP, 0x31, 0x01, 0x9E, targetFanSpeed, 0x0E, 0x80, 0x70, checksum, MSGSTARTSTOP};
+
   ss->enableTx(true);
-  {
-    if (debug_console_serial_txMessage) {
-      Serial.print(F("TX: "));
-      Serial.write(MSGSTARTSTOP);
-    }
-    ss->write(MSGSTARTSTOP);
-    for (unsigned int i = 0; i < sizeof(message); i++) {
-      ss->write(message[i]);
-      if (debug_console_serial_txMessage) {
-        Serial.write(message[i]);
-      }
-    }
-    ss->write(bCalc);
-    if (debug_console_serial_txMessage) {
-      Serial.write(bCalc);
-    }
-    ss->write(MSGSTARTSTOP);
-    if (debug_console_serial_txMessage) {
-      Serial.write(MSGSTARTSTOP);
-      Serial.println();
-    }
+  ss->write(message, sizeof(message));
+  if (debug_console_serial_txMessage) {
+    Serial.print(F("TX: "));
+    Serial.write(message, sizeof(message));
+    Serial.println();
   }
   ss->enableTx(false);
-  delay(50);
+  delay(10);
 
+  // Read the response
   while (ss->available()) {
     byte ch = (byte)ss->read();
     if (debug_console_serial_rxDataAvailable) {
@@ -155,7 +94,7 @@ void checkSwSerial(SoftwareSerial* ss) {
       }
     }
     yield();
-}
+  }
 }
 
 void parseReceivedData() {
@@ -168,6 +107,7 @@ void parseReceivedData() {
   //   [1] => first part of temp
   //   [2] => second part of temp
   //   [3] => checksum
+
   tempLocation = (char)serialData[0];
   String firstHexPart = decToHex(serialData[1], 2);
   String secondHexPart = decToHex(serialData[2], 2);
@@ -177,4 +117,12 @@ void parseReceivedData() {
   temperature = (int)(temperature * 2 + 0.5) / 2.0f;
 
   currentRoofTemperature = temperature;
+}
+
+byte calculateChecksum(byte* data, size_t length) {
+  int checksum = 0;
+  for (size_t i = 0; i < length; i++) {
+    checksum -= data[i];
+  }
+  return (byte)(checksum % 0x100);
 }
