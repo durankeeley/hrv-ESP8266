@@ -5,10 +5,8 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-// ---------------------------------------------------------------------------
-// External variable declarations (no definitions)
-// ---------------------------------------------------------------------------
 
+// External variable declarations (no definitions)
 // WiFi / MQTT objects
 extern WiFiClient      wifiClient;
 extern PubSubClient    client;
@@ -16,9 +14,9 @@ extern IPAddress       ipadd;
 extern char            packetBuffer[255];
 extern int             iTotalDelay;
 
-// Basic MQTT info (port, topics, etc.)
-extern int             mqtt_port;           // e.g. 1883
-extern const char*     topic;               // e.g. "hrv/status"
+// Basic MQTT info
+extern int             mqtt_port;
+extern const char*     topic;
 extern const char*     MQTT_TARGET_FAN_SPEED;
 extern const char*     MQTT_ROOF_TEMP;
 extern const char*     MQTT_FAN_SPEED;

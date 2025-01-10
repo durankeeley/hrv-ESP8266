@@ -1,3 +1,7 @@
+// Credit to: Spencer (data structure) http://www.hexperiments.com/?page_id=47
+// Credit to: chimera (Original Logic) - https://www.geekzone.co.nz/forums.asp?forumid=141&topicid=195424
+// Credit to: millst (TX/RX on the same pin) - https://www.geekzone.co.nz/forums.asp?forumid=141&topicid=195424&page_no=2#2982537
+
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include <SoftwareSerial.h>
@@ -88,7 +92,7 @@ void setup() {
     Serial.println(F("Booting..."));
   }
 
-  // Note: We use the same pin for RX/TX, so we set half-duplex, buffer size 256
+  // Note: RX/TX on the same pin, so setting half-duplex, buffer size 256
   hrvSerial.begin(1200, SWSERIAL_8N1, D6, D6, false, 256);
   hrvSerial.enableIntTx(false); // disable tx interrupt
 
