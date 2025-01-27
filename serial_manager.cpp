@@ -18,12 +18,32 @@ extern byte checksumIndex;
 extern const byte MSGSTARTSTOP;
 byte calculateChecksum(byte* data, size_t length);
 
+void dumpMessage(const byte* message, size_t length) {
+  // Each byte will occupy up to 3 characters: 2 hex digits + a space.
+  // Add some space for a prefix like "Message: " and the terminator.
+  char buffer[3 * length + 16];
+  int offset = 0;
+
+  // Start the string
+  offset += sprintf(buffer + offset, "Message: ");
+
+  // Append each byte in hex
+  for (size_t i = 0; i < length; i++) {
+    // %02X prints two hex digits (zero-padded if <0x10), uppercase
+    offset += sprintf(buffer + offset, "%02X ", message[i]);
+  }
+
+  // Print it all in one go
+  Serial.printf("%s\n", buffer);
+}
+
 void checkSwSerial(SoftwareSerial* ss) {
 
   if (debug_mockRoofTemp) {
     injectMockData();
     return;
   }
+
 
   // Send the packet to the HRV Roof 
   byte messageData[] = {0x31, 0x01, 0x9E, targetFanSpeed, 0x0E, 0x80, 0x70};
@@ -45,6 +65,7 @@ void checkSwSerial(SoftwareSerial* ss) {
 
   // Construct the full message
   byte message[] = {MSGSTARTSTOP, 0x31, 0x01, 0x9E, targetFanSpeed, 0x0E, 0x80, 0x70, checksum, MSGSTARTSTOP};
+  dumpMessage(message, sizeof(message));
 
   ss->enableTx(true);
   ss->write(message, sizeof(message));
