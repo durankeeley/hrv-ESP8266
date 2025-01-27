@@ -40,6 +40,7 @@ const char*  topic                 = "hrv/status";
 const char*  MQTT_TARGET_FAN_SPEED = "hrv/targetfanspeed";
 const char*  MQTT_ROOF_TEMP        = "hrv/rooftemp";
 const char*  MQTT_FAN_SPEED        = "hrv/currentfanspeed";
+const char*  MQTT_TARGETFAN_SPEEDBYTE        = "hrv/fanspeedbyte";
 
 // Debug flags
 bool debug_console_enable                            = true;
@@ -64,7 +65,7 @@ bool  dataStarted      = false;
 bool  dataReceived     = false;
 float currentRoofTemperature = 0.0;
 float lastRoofTemperatures[3] = {0.0, 0.0, 0.0};
-byte  targetFanSpeed   = 0x00;
+byte  targetFanSpeed;
 byte  lastTargetFanSpeed = 0;
 char  tempLocation     = 'R';
 char  HRVTemperature_buff[16];
@@ -118,7 +119,7 @@ void loop() {
     previousReadMillis = currentMillis;
 
     // Write and read from HRV
-    targetFanSpeed = 0;
+    // targetFanSpeed = 0;
     checkSwSerial(&hrvSerial);
 
     if (debug_console_hrvController_currentRoofTemperature) {
@@ -199,12 +200,16 @@ void loop() {
 
     // Publish current fan speed to MQTT
     String mqttPublishFanSpeed = String(targetFanSpeed);
+    String mqttPublishFanSpeedByte = String(targetFanSpeed, HEX);
     mqttPublishFanSpeed.toCharArray(FanSpeed_buff, sizeof(FanSpeed_buff));
     if (debug_console_mqtt_targetFanSpeed) {
       Serial.print(F("Fan Speed: "));
       Serial.println(mqttPublishFanSpeed);
+      Serial.print(F("Fan Speed Byte: "));
+      Serial.println(mqttPublishFanSpeedByte);
     }
     client.publish(MQTT_FAN_SPEED, FanSpeed_buff);
+    client.publish(MQTT_TARGETFAN_SPEEDBYTE, mqttPublishFanSpeedByte.c_str());
   }
 }
 
